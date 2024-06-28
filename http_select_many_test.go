@@ -26,13 +26,18 @@ import (
 // - AUTH_USERNAME: string
 // - AUTH_PASSWORD: string
 // - TARGET_COLLECTION_ID: string
-// - LIMIT: integer
 // - COUNT: integer
 // - PARALLEL: integer
 
 func TestSelectMany(t *testing.T) {
+	type FilterReq struct {
+		Field string `json:"field"`
+		Op    string `json:"op"`
+		Value any    `json:"value"`
+	}
 	type Req struct {
-		Limit int `json:"limit"`
+		Filters []FilterReq `json:"filters"`
+		Limit   int         `json:"limit"`
 	}
 
 	baseURL, ok := os.LookupEnv("BASE_URL")
@@ -75,14 +80,6 @@ func TestSelectMany(t *testing.T) {
 	if !ok {
 		t.Fatal("TARGET_COLLECTION_ID does not exist")
 	}
-	limitStr, ok := os.LookupEnv("LIMIT")
-	if !ok {
-		t.Fatal("LIMIT does not exist")
-	}
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil {
-		t.Fatal(err)
-	}
 	countStr, ok := os.LookupEnv("COUNT")
 	if !ok {
 		t.Fatal("COUNT does not exist")
@@ -116,6 +113,8 @@ func TestSelectMany(t *testing.T) {
 
 	store := Store{}
 
+	var value any
+
 	fselect := func(req *http.Request) {
 		tStart := time.Now()
 		res, err := client.Do(req)
@@ -142,6 +141,7 @@ func TestSelectMany(t *testing.T) {
 		}
 
 		store.Append(tEnd.Sub(tStart), success)
+		value = dataRes.Data[0].ID
 	}
 
 	fworker := func(reqs <-chan *http.Request, wg *sync.WaitGroup) {
@@ -162,21 +162,30 @@ func TestSelectMany(t *testing.T) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	reqData := Req{
-		Limit: limit,
-	}
-
-	reqDataJSON, err := json.Marshal(reqData)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 reqloop:
 	for range count {
 		select {
 		case <-interrupt:
 			break reqloop
 		default:
+			reqData := Req{
+				Limit: 1,
+			}
+			if value != nil {
+				reqData.Filters = []FilterReq{
+					{
+						Field: "_id",
+						Op:    ">=",
+						Value: value,
+					},
+				}
+			}
+
+			reqDataJSON, err := json.Marshal(reqData)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/api/rest/project/%s/collection/%s/records", baseURL, projectID, targetCollectionID), bytes.NewReader(reqDataJSON))
 			if err != nil {
 				t.Fatal(err)
