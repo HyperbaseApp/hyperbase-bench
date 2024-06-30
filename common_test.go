@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sync"
 	"testing"
@@ -78,7 +79,7 @@ func (s *Store) PrintResult(t *testing.T) {
 
 	len := len(s.Results)
 
-	totalDuration := 0
+	totalDuration := time.Duration(0)
 	highestDuration := s.Results[0].Duration
 	lowestDuration := s.Results[0].Duration
 
@@ -92,7 +93,7 @@ func (s *Store) PrintResult(t *testing.T) {
 
 	totalError := 0
 	for _, r := range s.Results {
-		totalDuration += int(r.Duration)
+		totalDuration += r.Duration
 		totalCPUPercentage += r.CPUPercentage
 		totalRAMUsage += r.RAMUsage
 		if !r.Success {
@@ -114,9 +115,27 @@ func (s *Store) PrintResult(t *testing.T) {
 			lowestRAMUsage = r.RAMUsage
 		}
 	}
-	averageDuration := time.Duration(totalDuration / len)
+
+	averageDuration := time.Duration(int(totalDuration) / len)
+	var sdevDuration float64
+	for _, r := range s.Results {
+		sdevDuration += math.Pow(float64(r.Duration-averageDuration), 2)
+	}
+	sdevDuration = math.Sqrt(sdevDuration / float64(len))
+
 	averageCPUPercentage := totalCPUPercentage / float64(len)
+	var sdevCPUPercentage float64
+	for _, r := range s.Results {
+		sdevCPUPercentage += math.Pow(float64(r.CPUPercentage-averageCPUPercentage), 2)
+	}
+	sdevCPUPercentage = math.Sqrt(sdevDuration / float64(len))
+
 	averageRAMUsage := totalRAMUsage / uint64(len)
+	var sdevRAMUsage float64
+	for _, r := range s.Results {
+		sdevCPUPercentage += math.Pow(float64(r.RAMUsage-averageRAMUsage), 2)
+	}
+	sdevRAMUsage = math.Sqrt(sdevRAMUsage / float64(len))
 
 	t.Logf(`
 Total Duration: %v
@@ -125,30 +144,36 @@ Total Request: %d
 Average Duration: %v
 Highest Duration: %v
 Lowest Duration: %v
+StdDev Duration: %v
 
 Average CPU: %f %%
 Highest CPU: %f %%
 Lowest CPU: %f %%
+StdDev CPU: %f
 
 Average RAM: %d MiB
 Highest RAM: %d MiB
 Lowest RAM: %d MiB
+StdDev RAM: %f
 
 Total Error: %d`,
-		time.Duration(totalDuration),
+		totalDuration,
 		len,
 
 		averageDuration,
 		highestDuration,
 		lowestDuration,
+		time.Duration(sdevDuration),
 
 		averageCPUPercentage,
 		highestCPUPercentage,
 		lowestCPUPercentage,
+		sdevCPUPercentage,
 
 		averageRAMUsage/BytesPerMiB,
 		highestRAMUsage/BytesPerMiB,
 		lowestRAMUsage/BytesPerMiB,
+		sdevRAMUsage,
 
 		totalError,
 	)
