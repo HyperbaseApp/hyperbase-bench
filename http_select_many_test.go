@@ -116,6 +116,8 @@ func TestSelectMany(t *testing.T) {
 	var value any
 
 	fselect := func(req *http.Request) {
+		client := http.Client{}
+
 		tStart := time.Now()
 		res, err := client.Do(req)
 		if err != nil {
@@ -135,13 +137,16 @@ func TestSelectMany(t *testing.T) {
 			t.Error(err)
 		}
 
-		success := false
-		if len(dataRes.Data) > 0 {
-			success = true
+		success := true
+		if len(dataRes.Error.Status) > 0 {
+			success = false
+			t.Error(dataRes.Error.Message)
 		}
 
 		store.Append(tEnd.Sub(tStart), success)
-		value = dataRes.Data[0].ID
+		if len(dataRes.Data) > 0 {
+			value = dataRes.Data[0].ID
+		}
 	}
 
 	fworker := func(reqs <-chan *http.Request, wg *sync.WaitGroup) {

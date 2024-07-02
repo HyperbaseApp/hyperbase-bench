@@ -105,12 +105,13 @@ func TestInsertUntil(t *testing.T) {
 	}
 
 	client := http.Client{}
-
 	authToken := getAuthToken(t, baseURL, &client, authData)
 
 	store := Store{}
 
 	finsert := func(req *http.Request) {
+		client := http.Client{}
+
 		tStart := time.Now()
 		res, err := client.Do(req)
 		if err != nil {

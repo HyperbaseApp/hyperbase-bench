@@ -2,6 +2,7 @@ package hyperbasebench_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"os/signal"
@@ -117,17 +118,8 @@ func TestMQTTInsertOneUntil(t *testing.T) {
 
 	store := Store{}
 
-	opts := mqtt.NewClientOptions()
-	opts.AddBroker(broker)
-	opts.SetCleanSession(false)
-	opts.SetClientID("TEST-CLIENT")
+	fpub := func(client mqtt.Client, payload any) {
 
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		t.Fatal(token.Error())
-	}
-
-	fpub := func(payload any) {
 		success := true
 		tStart := time.Now()
 		token := client.Publish(topic, byte(qos), true, payload)
@@ -140,9 +132,9 @@ func TestMQTTInsertOneUntil(t *testing.T) {
 		store.Append(tEnd.Sub(tStart), success)
 	}
 
-	fworker := func(reqs <-chan any, wg *sync.WaitGroup) {
+	fworker := func(client mqtt.Client, reqs <-chan any, wg *sync.WaitGroup) {
 		for req := range reqs {
-			fpub(req)
+			fpub(client, req)
 		}
 		wg.Done()
 	}
@@ -150,9 +142,19 @@ func TestMQTTInsertOneUntil(t *testing.T) {
 	taskQueue := make(chan any, parallel)
 	wg := new(sync.WaitGroup)
 
-	for range parallel {
+	for i := range parallel {
 		wg.Add(1)
-		go fworker(taskQueue, wg)
+
+		opts := mqtt.NewClientOptions()
+		opts.AddBroker(broker)
+		opts.SetCleanSession(false)
+		opts.SetClientID(fmt.Sprintf("TEST-CLIENT-%d", i))
+		client := mqtt.NewClient(opts)
+		if token := client.Connect(); token.Wait() && token.Error() != nil {
+			t.Fatal(token.Error())
+		}
+
+		go fworker(client, taskQueue, wg)
 	}
 
 	interrupt := make(chan os.Signal, 1)
